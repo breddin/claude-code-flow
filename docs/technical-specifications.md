@@ -229,7 +229,7 @@ interface FileManager {
 ```typescript
 interface WebSocketServerConfig {
   // Connection settings
-  port: number;                 // Default: 3001
+  port: number;                 // Default: 8001
   host: string;                 // Default: 'localhost'
   maxConnections: number;       // Default: 100
   
@@ -274,7 +274,7 @@ interface WebSocketServer {
 ```typescript
 interface HTTPServerConfig {
   // Server settings
-  port: number;                 // Default: 3000
+  port: number;                 // Default: 8000
   host: string;                 // Default: 'localhost'
   staticPath: string;           // Default: './public'
   

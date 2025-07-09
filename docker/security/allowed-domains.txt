@@ -1,0 +1,54 @@
+# Allowed domains for egress firewall
+# This file contains the approved external domains that Claude Flow containers
+# are allowed to connect to, implementing Anthropic's recommended egress restrictions
+
+# Anthropic API endpoints
+api.anthropic.com
+claude.ai
+
+# Essential NPM and Node.js services
+registry.npmjs.org
+registry.npmjs.com
+nodejs.org
+github.com
+
+# GitHub for package dependencies
+raw.githubusercontent.com
+github.com
+api.github.com
+
+# CloudFlare DNS and services
+1.1.1.1
+1.0.0.1
+cloudflare.com
+
+# Google DNS
+8.8.8.8
+8.8.4.4
+
+# Essential CDN services for Node.js ecosystem
+cdn.jsdelivr.net
+unpkg.com
+cdnjs.cloudflare.com
+
+# Time synchronization
+pool.ntp.org
+time.cloudflare.com
+time.google.com
+
+# Certificate authorities and security services
+letsencrypt.org
+digicert.com
+verisign.com
+
+# Docker Hub (if needed for runtime)
+docker.io
+registry-1.docker.io
+
+# Essential cloud services (if using cloud deployment)
+amazonaws.com
+azure.com
+googleapis.com
+
+# NOTE: Add additional domains here as needed, but follow the principle of least privilege
+# Each domain should be justified and documented with a business reason

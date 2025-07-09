@@ -56,8 +56,8 @@ echo
 cat << 'EOF'
 ✅ Working Port Examples (Issue #87 RESOLVED):
 
-# Start on port 3001
-./claude-flow mcp start --port 3001
+# Start on port 8001
+./claude-flow mcp start --port 8001
 
 # Start on all interfaces
 ./claude-flow mcp start --host 0.0.0.0 --port 8080

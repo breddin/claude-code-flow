@@ -52,7 +52,7 @@ docker-compose run --rm test
 Required environment variables:
 - `GITHUB_TOKEN`: GitHub access token
 - `NODE_ENV`: Environment (production/development/test)
-- `MCP_SERVER_URL`: MCP server URL (default: http://mcp-server:3001)
+- `MCP_SERVER_URL`: MCP server URL (default: http://mcp-server:8001)
 
 ## Services
 

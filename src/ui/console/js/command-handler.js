@@ -187,13 +187,13 @@ Usage: connect [url] [token]
 Connect to Claude Code server.
 
 Arguments:
-  url     - WebSocket URL (default: ws://localhost:3000/ws)
+  url     - WebSocket URL (default: ws://localhost:8000/ws)
   token   - Authentication token (optional)
 
 Examples:
   connect
-  connect ws://localhost:3000/ws
-  connect ws://localhost:3000/ws my-auth-token`,
+  connect ws://localhost:8000/ws
+  connect ws://localhost:8000/ws my-auth-token`,
       
       'claude-flow': `
 Usage: claude-flow <subcommand> [options]
@@ -288,7 +288,7 @@ Examples:
    * Connect to server
    */
   async connectToServer(args) {
-    const url = args[0] || 'ws://localhost:3000/ws';
+    const url = args[0] || 'ws://localhost:8000/ws';
     const token = args[1] || '';
     
     this.terminal.writeInfo(`Connecting to ${url}...`);

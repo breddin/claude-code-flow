@@ -1,0 +1,382 @@
+# Egress Proxy Deployment for Claude Flow
+# Implements Anthropic's recommended egress firewall restrictions
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: egress-proxy
+  namespace: claude-flow
+  labels:
+    app: egress-proxy
+    component: security
+    security.anthropic.com/hardened: "true"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: egress-proxy
+      component: security
+  template:
+    metadata:
+      labels:
+        app: egress-proxy
+        component: security
+        security.anthropic.com/hardened: "true"
+      annotations:
+        seccomp.security.alpha.kubernetes.io/pod: "runtime/default"
+        apparmor.security.beta.kubernetes.io/pod: "runtime/default"
+    spec:
+      serviceAccountName: claude-flow
+      automountServiceAccountToken: false
+      
+      # Security context for the pod
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+        supplementalGroups: [1001]
+      
+      containers:
+        - name: squid-proxy
+          image: squid:5-alpine
+          imagePullPolicy: Always
+          
+          # Container security context
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN, SETGID, SETUID, NET_BIND_SERVICE]
+            seccompProfile:
+              type: RuntimeDefault
+          
+          # Resource limits
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          
+          # Environment variables
+          env:
+            - name: SQUID_USER
+              value: "squid"
+            - name: SQUID_GROUP
+              value: "squid"
+          
+          # Ports
+          ports:
+            - containerPort: 3128
+              name: proxy
+              protocol: TCP
+          
+          # Volume mounts
+          volumeMounts:
+            - name: squid-config
+              mountPath: /etc/squid/squid.conf
+              subPath: squid.conf
+              readOnly: true
+            - name: allowed-domains
+              mountPath: /etc/squid/allowed-domains.txt
+              subPath: allowed-domains.txt
+              readOnly: true
+            - name: squid-cache
+              mountPath: /var/cache/squid
+            - name: squid-logs
+              mountPath: /var/log/squid
+            - name: tmp-volume
+              mountPath: /tmp
+            - name: var-tmp-volume
+              mountPath: /var/tmp
+          
+          # Liveness probe
+          livenessProbe:
+            tcpSocket:
+              port: 3128
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          
+          # Readiness probe
+          readinessProbe:
+            tcpSocket:
+              port: 3128
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 3
+          
+          # Startup probe
+          startupProbe:
+            tcpSocket:
+              port: 3128
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 12
+      
+      # Volumes
+      volumes:
+        - name: squid-config
+          configMap:
+            name: squid-config
+            defaultMode: 0644
+        - name: allowed-domains
+          configMap:
+            name: allowed-domains
+            defaultMode: 0644
+        - name: squid-cache
+          emptyDir:
+            sizeLimit: 200Mi
+        - name: squid-logs
+          emptyDir:
+            sizeLimit: 100Mi
+        - name: tmp-volume
+          emptyDir:
+            sizeLimit: 100Mi
+        - name: var-tmp-volume
+          emptyDir:
+            sizeLimit: 50Mi
+      
+      # Pod placement and affinity
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values: [egress-proxy]
+                topologyKey: kubernetes.io/hostname
+      
+      # Tolerations for security constraints
+      tolerations:
+        - key: "security.anthropic.com/hardened"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+      
+      # Node selector for security-compliant nodes
+      nodeSelector:
+        security.anthropic.com/hardened: "true"
+      
+      # DNS configuration
+      dnsPolicy: ClusterFirst
+      
+      # Restart policy
+      restartPolicy: Always
+      
+      # Termination grace period
+      terminationGracePeriodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: egress-proxy
+  namespace: claude-flow
+  labels:
+    app: egress-proxy
+    component: security
+spec:
+  selector:
+    app: egress-proxy
+    component: security
+  ports:
+    - name: proxy
+      port: 3128
+      targetPort: 3128
+      protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: squid-config
+  namespace: claude-flow
+data:
+  squid.conf: |
+    # Squid configuration for egress firewall
+    # This configuration implements Anthropic's recommended egress restrictions
+    
+    # Basic configuration
+    http_port 3128
+    coredump_dir /var/cache/squid
+    
+    # Security headers
+    reply_header_add X-Proxy-Security "Claude-Flow-Egress-Firewall"
+    reply_header_add X-Content-Type-Options "nosniff"
+    reply_header_add X-Frame-Options "DENY"
+    
+    # Logging
+    access_log /var/log/squid/access.log squid
+    cache_log /var/log/squid/cache.log
+    logfile_rotate 10
+    
+    # Memory and cache settings
+    cache_mem 64 MB
+    maximum_object_size_in_memory 512 KB
+    maximum_object_size 10 MB
+    
+    # Define ACLs for allowed destinations
+    acl localnet src 172.20.0.0/16
+    acl SSL_ports port 443
+    acl Safe_ports port 80
+    acl Safe_ports port 443
+    acl CONNECT method CONNECT
+    
+    # Read allowed domains from file
+    acl allowed_domains dstdomain "/etc/squid/allowed-domains.txt"
+    
+    # Anthropic API endpoints
+    acl anthropic_api dstdomain api.anthropic.com
+    acl anthropic_api dstdomain claude.ai
+    
+    # Essential services for Node.js applications
+    acl npm_registry dstdomain registry.npmjs.org
+    acl npm_registry dstdomain registry.npmjs.com
+    acl node_services dstdomain nodejs.org
+    acl node_services dstdomain github.com
+    
+    # DNS and NTP (essential for container operation)
+    acl dns_servers dst 8.8.8.8/32
+    acl dns_servers dst 8.8.4.4/32
+    acl dns_servers dst 1.1.1.1/32
+    acl dns_servers dst 1.0.0.1/32
+    
+    # Time services
+    acl ntp_servers dstdomain pool.ntp.org
+    acl ntp_servers dstdomain time.cloudflare.com
+    
+    # Block dangerous ports
+    acl dangerous_ports port 22 23 25 53 110 143 993 995 1080 3128 8080 8443
+    
+    # HTTP access rules
+    http_access deny !Safe_ports
+    http_access deny CONNECT !SSL_ports
+    http_access deny dangerous_ports
+    
+    # Allow access to approved destinations
+    http_access allow localnet anthropic_api
+    http_access allow localnet allowed_domains
+    http_access allow localnet npm_registry
+    http_access allow localnet node_services
+    http_access allow localnet dns_servers
+    http_access allow localnet ntp_servers
+    
+    # Deny all other access
+    http_access deny all
+    
+    # Cache configuration
+    cache_dir ufs /var/cache/squid 100 16 256
+    cache_replacement_policy lru
+    
+    # Refresh patterns
+    refresh_pattern ^ftp:       1440    20% 10080
+    refresh_pattern ^gopher:    1440    0%  1440
+    refresh_pattern -i (/cgi-bin/|\?) 0  0%  0
+    refresh_pattern .           0       20% 4320
+    
+    # Request size limits
+    request_header_max_size 64 KB
+    request_body_max_size 10 MB
+    reply_body_max_size 50 MB
+    
+    # Timeout settings
+    connect_timeout 30 seconds
+    read_timeout 60 seconds
+    request_timeout 60 seconds
+    
+    # Security enhancements
+    forwarded_for delete
+    via off
+    httpd_suppress_version_string on
+    
+    # Disable unnecessary features
+    icp_port 0
+    htcp_port 0
+    snmp_port 0
+    
+    # Process management
+    pid_filename /var/run/squid.pid
+    
+    # User and group (run as non-root)
+    cache_effective_user squid
+    cache_effective_group squid
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: allowed-domains
+  namespace: claude-flow
+data:
+  allowed-domains.txt: |
+    # Allowed domains for egress firewall
+    # This file contains the approved external domains that Claude Flow containers
+    # are allowed to connect to, implementing Anthropic's recommended egress restrictions
+    
+    # Anthropic API endpoints
+    api.anthropic.com
+    claude.ai
+    
+    # Essential NPM and Node.js services
+    registry.npmjs.org
+    registry.npmjs.com
+    nodejs.org
+    github.com
+    
+    # GitHub for package dependencies
+    raw.githubusercontent.com
+    github.com
+    api.github.com
+    
+    # CloudFlare DNS and services
+    1.1.1.1
+    1.0.0.1
+    cloudflare.com
+    
+    # Google DNS
+    8.8.8.8
+    8.8.4.4
+    
+    # Essential CDN services for Node.js ecosystem
+    cdn.jsdelivr.net
+    unpkg.com
+    cdnjs.cloudflare.com
+    
+    # Time synchronization
+    pool.ntp.org
+    time.cloudflare.com
+    time.google.com
+    
+    # Certificate authorities and security services
+    letsencrypt.org
+    digicert.com
+    verisign.com
+    
+    # Docker Hub (if needed for runtime)
+    docker.io
+    registry-1.docker.io
+    
+    # Essential cloud services (if using cloud deployment)
+    amazonaws.com
+    azure.com
+    googleapis.com

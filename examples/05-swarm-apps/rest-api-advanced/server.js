@@ -134,7 +134,7 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: process.env.API_URL || 'http://localhost:3000',
+        url: process.env.API_URL || 'http://localhost:8000',
         description: 'Development server',
       },
     ],
@@ -169,7 +169,7 @@ app.get('/', (req, res) => {
   res.json({
     message: 'Advanced REST API',
     version: '1.0.0',
-    documentation: `${process.env.API_URL || 'http://localhost:3000'}/api-docs`,
+    documentation: `${process.env.API_URL || 'http://localhost:8000'}/api-docs`,
   });
 });
 
@@ -214,7 +214,7 @@ async function gracefulShutdown() {
 }
 
 // Start server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8000;
 let server;
 
 async function startServer() {

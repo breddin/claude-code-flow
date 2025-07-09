@@ -254,7 +254,7 @@ function showStartHelp() {
   console.log();
   console.log('Web-based UI:');
   console.log('  The --web flag starts a web server with:');
-  console.log('    - Full-featured web console at http://localhost:3000/console');
+  console.log('    - Full-featured web console at http://localhost:8000/console');
   console.log('    - Real-time WebSocket communication');
   console.log('    - Mobile-responsive design');
   console.log('    - Multiple themes and customization options');

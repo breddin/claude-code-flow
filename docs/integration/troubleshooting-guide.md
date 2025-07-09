@@ -690,12 +690,12 @@ for i in {1..10}; do curl -s http://your-domain.com/health; done
 # upstream claude_flow {
 #   least_conn;
 #   server claude-flow-1:3000;
-#   server claude-flow-2:3000;
+#   server claude-flow-2:8000;
 # }
 
 # Solution 3: Implement health checks
 # In nginx.conf:
-# server claude-flow-1:3000 max_fails=3 fail_timeout=30s;
+# server claude-flow-1:8000 max_fails=3 fail_timeout=30s;
 
 # Solution 4: Use sticky sessions for coordination
 # Add to nginx:

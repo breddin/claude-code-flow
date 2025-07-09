@@ -1,0 +1,264 @@
+# Claude Flow Main Application Deployment
+# Implements Anthropic's recommended security practices
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claude-flow-main
+  namespace: claude-flow
+  labels:
+    app: claude-flow
+    component: main
+    security.anthropic.com/hardened: "true"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: claude-flow
+      component: main
+  template:
+    metadata:
+      labels:
+        app: claude-flow
+        component: main
+        security.anthropic.com/hardened: "true"
+      annotations:
+        seccomp.security.alpha.kubernetes.io/pod: "runtime/default"
+        apparmor.security.beta.kubernetes.io/pod: "runtime/default"
+    spec:
+      serviceAccountName: claude-flow
+      automountServiceAccountToken: false
+      
+      # Security context for the pod
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+        supplementalGroups: [1001]
+      
+      # Init container for security setup
+      initContainers:
+        - name: security-init
+          image: busybox:1.35
+          command: ['sh', '-c', 'mkdir -p /data /app/logs && chown -R 1001:1001 /data /app/logs']
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN, DAC_OVERRIDE]
+          volumeMounts:
+            - name: data-volume
+              mountPath: /data
+            - name: logs-volume
+              mountPath: /app/logs
+      
+      containers:
+        - name: claude-flow
+          image: claude-flow:hardened
+          imagePullPolicy: Always
+          
+          # Container security context
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN, SETGID, SETUID, DAC_OVERRIDE]
+            seccompProfile:
+              type: RuntimeDefault
+          
+          # Resource limits
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "2000m"
+          
+          # Environment variables from ConfigMap
+          envFrom:
+            - configMapRef:
+                name: claude-flow-config
+          
+          # Additional environment variables
+          env:
+            - name: HIVE_DB_PATH
+              value: "/data/hive-mind.db"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          
+          # Ports
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          
+          # Volume mounts
+          volumeMounts:
+            - name: data-volume
+              mountPath: /data
+            - name: logs-volume
+              mountPath: /app/logs
+            - name: tmp-volume
+              mountPath: /tmp
+            - name: var-tmp-volume
+              mountPath: /var/tmp
+            - name: run-volume
+              mountPath: /run
+          
+          # Liveness probe
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+          
+          # Readiness probe
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          
+          # Startup probe
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 30
+      
+      # Volumes
+      volumes:
+        - name: data-volume
+          persistentVolumeClaim:
+            claimName: claude-flow-data
+        - name: logs-volume
+          persistentVolumeClaim:
+            claimName: claude-flow-logs
+        - name: tmp-volume
+          emptyDir:
+            sizeLimit: 100Mi
+        - name: var-tmp-volume
+          emptyDir:
+            sizeLimit: 50Mi
+        - name: run-volume
+          emptyDir:
+            sizeLimit: 50Mi
+      
+      # Pod placement and affinity
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values: [claude-flow]
+                    - key: component
+                      operator: In
+                      values: [main]
+                topologyKey: kubernetes.io/hostname
+      
+      # Tolerations for security constraints
+      tolerations:
+        - key: "security.anthropic.com/hardened"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+      
+      # Node selector for security-compliant nodes
+      nodeSelector:
+        security.anthropic.com/hardened: "true"
+      
+      # DNS configuration
+      dnsPolicy: ClusterFirst
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "2"
+          - name: edns0
+      
+      # Restart policy
+      restartPolicy: Always
+      
+      # Termination grace period
+      terminationGracePeriodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: claude-flow-main
+  namespace: claude-flow
+  labels:
+    app: claude-flow
+    component: main
+spec:
+  selector:
+    app: claude-flow
+    component: main
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: claude-flow-data
+  namespace: claude-flow
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: fast-ssd
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: claude-flow-logs
+  namespace: claude-flow
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: fast-ssd

@@ -13,7 +13,7 @@ services:
       - NODE_ENV=production
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - CLAUDE_FLOW_HOME=/home/claude/.claude-flow
-      - MCP_SERVER_URL=http://mcp-server:3001
+      - MCP_SERVER_URL=http://mcp-server:8001
     volumes:
       - claude-flow-data:/home/claude/.claude-flow
       - ../../workspace:/workspace
@@ -21,7 +21,7 @@ services:
       - claude-flow-network
     command: ["start", "--mode", "server"]
     ports:
-      - "3000:3000"
+      - "8000:8000"
 
   # MCP Server for Claude Flow
   mcp-server:
@@ -41,7 +41,7 @@ services:
       - claude-flow-network
     command: ["mcp", "start", "--port", "3001"]
     ports:
-      - "3001:3001"
+      - "8001:8001"
 
   # ruv-swarm integration
   ruv-swarm:

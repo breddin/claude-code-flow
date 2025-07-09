@@ -1,0 +1,384 @@
+# Hardened Docker Compose configuration following Anthropic's security recommendations
+# This configuration implements container security best practices including:
+# - Egress firewall restrictions
+# - Capability restrictions
+# - Seccomp profiles
+# - Read-only root filesystem
+# - Runtime security hardening
+
+services:
+  # Main Hive Mind service with security hardening
+  hive-mind:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.hive-mind.hardened
+      target: runtime
+    container_name: hive-mind-main
+    ports:
+      - "8080:8080"  # API port
+    volumes:
+      - hive-data:/data
+      - hive-logs:/app/logs
+    environment:
+      - NODE_ENV=production
+      - HIVE_DB_PATH=/data/hive-mind.db
+      - HIVE_LOG_LEVEL=info
+      - HIVE_MAX_AGENTS=100
+      - HIVE_MCP_ENABLED=true
+      - HIVE_API_KEY=${HIVE_API_KEY:-default-key}
+    networks:
+      - hive-network
+    restart: unless-stopped
+    
+    # Security hardening configuration
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:seccomp-profiles/claude-flow-seccomp.json
+      - apparmor:docker-default
+    
+    # Capability restrictions (drop all, add only necessary)
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    
+    # Read-only root filesystem
+    read_only: true
+    
+    # Resource limits to prevent DoS
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    
+    # Process limits
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 1024
+        hard: 65535
+    
+    # Disable privileged mode
+    privileged: false
+    
+    # User namespace remapping
+    user: 1001:1001
+    
+    # PID namespace isolation
+    pid: container
+    
+    # Tmpfs for writable directories
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=100m
+      - /var/tmp:rw,noexec,nosuid,nodev,size=50m
+      - /run:rw,noexec,nosuid,nodev,size=50m
+    
+    # Health check with security considerations
+    healthcheck:
+      test: ["CMD", "node", "src/cli/simple-cli.js", "hive-mind", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+
+  # MCP Server with security hardening
+  mcp-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.hive-mind.hardened
+      target: runtime
+    container_name: hive-mcp-server
+    command: ["node", "--max-old-space-size=256", "src/cli/simple-cli.js", "mcp", "start", "--port", "8081"]
+    ports:
+      - "8081:8081"  # MCP server port
+    volumes:
+      - hive-data:/data:ro  # Read-only access to Hive data
+      - mcp-config:/app/.claude
+    environment:
+      - MCP_MODE=server
+      - MCP_PORT=8081
+      - HIVE_DB_PATH=/data/hive-mind.db
+      - NODE_ENV=production
+    networks:
+      - hive-network
+    depends_on:
+      - hive-mind
+    restart: unless-stopped
+    
+    # Security hardening configuration
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:seccomp-profiles/claude-flow-seccomp.json
+      - apparmor:docker-default
+    
+    # Capability restrictions
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    
+    # Read-only root filesystem
+    read_only: true
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    
+    # Process limits
+    ulimits:
+      nproc: 32768
+      nofile:
+        soft: 512
+        hard: 32768
+    
+    # Disable privileged mode
+    privileged: false
+    
+    # User namespace remapping
+    user: 1001:1001
+    
+    # PID namespace isolation
+    pid: container
+    
+    # Tmpfs for writable directories
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=50m
+      - /var/tmp:rw,noexec,nosuid,nodev,size=25m
+      - /run:rw,noexec,nosuid,nodev,size=25m
+
+  # Egress firewall proxy for restricted internet access
+  egress-proxy:
+    image: sameersbn/squid:3.5.27-2
+    container_name: hive-egress-proxy
+    volumes:
+      - ./security/squid.conf:/etc/squid/squid.conf:ro
+      - ./security/allowed-domains.txt:/etc/squid/allowed-domains.txt:ro
+    ports:
+      - "3128:3128"
+    networks:
+      - hive-network
+    restart: unless-stopped
+    
+    # Security hardening
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:seccomp-profiles/proxy-seccomp.json
+    
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - NET_BIND_SERVICE
+    
+    read_only: true
+    
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=100m
+      - /var/tmp:rw,noexec,nosuid,nodev,size=50m
+      - /var/cache/squid:rw,noexec,nosuid,nodev,size=200m
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # Development environment with security controls
+  hive-dev:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.hive-mind.hardened
+      target: development
+    container_name: hive-mind-dev
+    ports:
+      - "8082:8080"  # Dev API port
+      - "8001:8000"  # Dev UI port
+    volumes:
+      - ../src:/app/src:ro  # Read-only source mount
+      - ../tests:/app/tests:ro  # Read-only test mount
+      - hive-dev-data:/data
+      - hive-dev-logs:/app/logs
+      - dev-node-modules:/app/node_modules
+    environment:
+      - NODE_ENV=development
+      - HIVE_DB_PATH=/data/hive-mind-dev.db
+      - HIVE_LOG_LEVEL=debug
+      - HIVE_DEV_MODE=true
+      - NODE_OPTIONS=--max-old-space-size=512
+      - HTTP_PROXY=http://egress-proxy:3128
+      - HTTPS_PROXY=http://egress-proxy:3128
+    networks:
+      - hive-network
+    depends_on:
+      - egress-proxy
+    
+    # Security hardening (relaxed for development)
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:seccomp-profiles/dev-seccomp.json
+    
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    
+    # Allow some write access for development
+    read_only: false
+    
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=200m
+      - /var/tmp:rw,noexec,nosuid,nodev,size=100m
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    
+    profiles:
+      - development
+
+  # Test runner with isolated environment
+  hive-test:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.hive-mind.hardened
+      target: test
+    container_name: hive-mind-test
+    volumes:
+      - ../src:/app/src:ro
+      - ../tests:/app/tests:ro
+      - test-results:/app/coverage
+    environment:
+      - NODE_ENV=test
+      - HIVE_DB_PATH=/tmp/test-hive.db
+      - HIVE_TEST_MODE=true
+      - NODE_OPTIONS=--max-old-space-size=256
+    networks:
+      - hive-network
+    
+    # Security hardening for test environment
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:seccomp-profiles/test-seccomp.json
+    
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    
+    read_only: true
+    
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=100m
+      - /var/tmp:rw,noexec,nosuid,nodev,size=50m
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    
+    profiles:
+      - test
+
+# Networks with security configuration
+networks:
+  hive-network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: hive-br0
+      com.docker.network.bridge.enable_icc: "false"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+    internal: false  # Allow external access through proxy only
+
+# Volumes with security constraints
+volumes:
+  hive-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,noexec,nosuid,nodev
+      device: ./data/hive-mind
+  
+  hive-logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,noexec,nosuid,nodev
+      device: ./logs
+  
+  mcp-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,noexec,nosuid,nodev
+      device: ./config/mcp
+  
+  hive-dev-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,noexec,nosuid,nodev
+      device: ./data/dev
+  
+  hive-dev-logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,noexec,nosuid,nodev
+      device: ./logs/dev
+  
+  dev-node-modules:
+    driver: local
+  
+  test-results:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind,noexec,nosuid,nodev
+      device: ./test-results

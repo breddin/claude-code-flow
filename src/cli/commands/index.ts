@@ -745,7 +745,7 @@ export function setupCommands(cli: CLI): void {
           try {
             // Mock logs since logging system might not be fully implemented
             success(`MCP Server Logs (last ${lines} lines):`);
-            console.log("2024-01-10 10:00:00 [INFO] MCP server started on localhost:3000");
+            console.log("2024-01-10 10:00:00 [INFO] MCP server started on localhost:8000");
             console.log("2024-01-10 10:00:01 [INFO] Tools registered: 12");
             console.log("2024-01-10 10:00:02 [INFO] Authentication disabled");
             console.log("2024-01-10 10:01:00 [INFO] Client connected: claude-desktop");

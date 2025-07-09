@@ -1,0 +1,266 @@
+# Kubernetes Security Policies for Claude Flow
+# Implements Anthropic's recommended container security practices
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: claude-flow
+  labels:
+    security.anthropic.com/hardened: "true"
+    pod-security.kubernetes.io/enforce: "restricted"
+    pod-security.kubernetes.io/audit: "restricted"
+    pod-security.kubernetes.io/warn: "restricted"
+
+---
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: claude-flow-restricted
+  namespace: claude-flow
+spec:
+  # Require containers to run as non-root user
+  runAsUser:
+    rule: MustRunAsNonRoot
+  runAsGroup:
+    rule: MustRunAs
+    ranges:
+      - min: 1000
+        max: 65535
+  
+  # Require non-root filesystem
+  fsGroup:
+    rule: MustRunAs
+    ranges:
+      - min: 1000
+        max: 65535
+  
+  # Restrict volume types
+  volumes:
+    - 'configMap'
+    - 'emptyDir'
+    - 'projected'
+    - 'secret'
+    - 'downwardAPI'
+    - 'persistentVolumeClaim'
+  
+  # Disable privileged containers
+  privileged: false
+  allowPrivilegeEscalation: false
+  
+  # Drop all capabilities
+  requiredDropCapabilities:
+    - ALL
+  
+  # Allow only specific capabilities if needed
+  allowedCapabilities:
+    - CHOWN
+    - SETGID
+    - SETUID
+    - DAC_OVERRIDE
+  
+  # Restrict seccomp
+  seccomp:
+    rule: MustRunAs
+    allowedProfiles:
+      - runtime/default
+      - localhost/claude-flow-seccomp
+  
+  # Restrict AppArmor
+  appArmor:
+    rule: MustRunAs
+    allowedProfiles:
+      - runtime/default
+      - localhost/claude-flow-apparmor
+  
+  # Restrict SELinux
+  seLinux:
+    rule: MustRunAs
+    seLinuxOptions:
+      level: "s0:c123,c456"
+  
+  # Host restrictions
+  hostNetwork: false
+  hostIPC: false
+  hostPID: false
+  hostPorts: []
+  
+  # Filesystem restrictions
+  readOnlyRootFilesystem: true
+  
+  # Network restrictions
+  allowedHostPaths: []
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: claude-flow-restricted
+  namespace: claude-flow
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: claude-flow-restricted
+  namespace: claude-flow
+subjects:
+  - kind: ServiceAccount
+    name: claude-flow
+    namespace: claude-flow
+roleRef:
+  kind: Role
+  name: claude-flow-restricted
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: claude-flow
+  namespace: claude-flow
+automountServiceAccountToken: false
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: claude-flow-network-policy
+  namespace: claude-flow
+spec:
+  podSelector:
+    matchLabels:
+      app: claude-flow
+  policyTypes:
+    - Ingress
+    - Egress
+  
+  # Ingress rules - allow only specific traffic
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-system
+        - podSelector:
+            matchLabels:
+              app: claude-flow-proxy
+      ports:
+        - protocol: TCP
+          port: 8080
+    - from:
+        - podSelector:
+            matchLabels:
+              app: claude-flow
+      ports:
+        - protocol: TCP
+          port: 8081
+  
+  # Egress rules - implement egress firewall
+  egress:
+    # Allow DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    
+    # Allow NTP
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 123
+    
+    # Allow HTTPS to approved endpoints only
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: egress-proxy
+      ports:
+        - protocol: TCP
+          port: 3128
+    
+    # Allow internal cluster communication
+    - to:
+        - podSelector:
+            matchLabels:
+              app: claude-flow
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8081
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: claude-flow-seccomp
+  namespace: claude-flow
+data:
+  seccomp-profile.json: |
+    {
+      "defaultAction": "SCMP_ACT_ERRNO",
+      "architectures": [
+        "SCMP_ARCH_X86_64",
+        "SCMP_ARCH_X86",
+        "SCMP_ARCH_X32",
+        "SCMP_ARCH_ARM64",
+        "SCMP_ARCH_ARM"
+      ],
+      "syscalls": [
+        {
+          "names": [
+            "access", "arch_prctl", "brk", "capget", "capset", "chdir", "chmod",
+            "chown", "clock_getres", "clock_gettime", "clock_nanosleep", "close",
+            "connect", "dup", "dup2", "epoll_create", "epoll_create1", "epoll_ctl",
+            "epoll_wait", "eventfd", "eventfd2", "execve", "exit", "exit_group",
+            "fcntl", "fstat", "fstatfs", "futex", "getcwd", "getdents", "getdents64",
+            "getegid", "geteuid", "getgid", "getgroups", "getpid", "getppid",
+            "getrandom", "getrlimit", "getrusage", "getsid", "gettid", "gettimeofday",
+            "getuid", "inotify_add_watch", "inotify_init", "inotify_init1",
+            "inotify_rm_watch", "ioctl", "kill", "lseek", "lstat", "madvise",
+            "mkdir", "mlock", "mmap", "mprotect", "mremap", "munlock", "munmap",
+            "nanosleep", "open", "openat", "pause", "pipe", "pipe2", "poll",
+            "ppoll", "prctl", "pread64", "pwrite64", "read", "readlink", "readv",
+            "recvfrom", "recvmsg", "restart_syscall", "rmdir", "rt_sigaction",
+            "rt_sigprocmask", "rt_sigreturn", "rt_sigsuspend", "rt_sigtimedwait",
+            "sched_getaffinity", "sched_yield", "sendfile", "sendmsg", "sendto",
+            "set_robust_list", "set_tid_address", "setgid", "setgroups", "setitimer",
+            "setpgid", "setrlimit", "setsid", "setsockopt", "setuid", "sigaltstack",
+            "socket", "socketpair", "stat", "statfs", "sync_file_range", "sysinfo",
+            "tgkill", "time", "timer_create", "timer_delete", "timer_getoverrun",
+            "timer_gettime", "timer_settime", "times", "tkill", "truncate", "uname",
+            "unlink", "utime", "utimensat", "utimes", "wait4", "waitpid", "write",
+            "writev"
+          ],
+          "action": "SCMP_ACT_ALLOW"
+        }
+      ]
+    }
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: claude-flow-config
+  namespace: claude-flow
+data:
+  NODE_ENV: "production"
+  HIVE_LOG_LEVEL: "info"
+  HIVE_MAX_AGENTS: "100"
+  HIVE_MCP_ENABLED: "true"
+  HIVE_PORT: "8080"
+  NODE_OPTIONS: "--max-old-space-size=512 --max-http-header-size=8192"
+  HTTP_PROXY: "http://egress-proxy:3128"
+  HTTPS_PROXY: "http://egress-proxy:3128"

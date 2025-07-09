@@ -10,7 +10,7 @@ services:
     container_name: hive-mind-main
     ports:
       - "8080:8080"  # API port
-      - "3000:3000"  # Web UI port
+      - "8000:8000"  # Web UI port
     volumes:
       - hive-data:/data
       - hive-logs:/app/logs
@@ -64,7 +64,7 @@ services:
     container_name: hive-mind-dev
     ports:
       - "8082:8080"  # Dev API port
-      - "3001:3000"  # Dev UI port
+      - "8001:8000"  # Dev UI port
       - "9229:9229"  # Node.js debugger
     volumes:
       - ../src:/app/src
@@ -129,7 +129,7 @@ services:
     image: grafana/grafana:latest
     container_name: hive-grafana
     ports:
-      - "3002:3000"
+      - "8002:8000"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro

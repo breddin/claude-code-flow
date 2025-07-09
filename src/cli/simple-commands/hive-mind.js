@@ -1729,7 +1729,7 @@ function generateCoordinationInstructions(swarmId, swarmName, objective, workers
     swarmId,
     swarmName,
     objective,
-    hiveMindEndpoint: 'ws://localhost:3000/hive-mind',
+    hiveMindEndpoint: 'ws://localhost:8000/hive-mind',
     mcpTools: [
       'mcp__ruv-swarm__memory_usage',
       'mcp__ruv-swarm__swarm_monitor', 

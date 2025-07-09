@@ -49,7 +49,7 @@ npx tsx src/cli/simple-cli.ts mcp start --port 3001
 ```
 
 #### ✅ Port Configuration Features:
-- **Default Port**: 3000
+- **Default Port**: 8000
 - **Supported Range**: 1024-65535
 - **Host Options**: localhost, 0.0.0.0, or specific IP
 - **Protocol Support**: HTTP and WebSocket
@@ -57,14 +57,14 @@ npx tsx src/cli/simple-cli.ts mcp start --port 3001
 
 #### ✅ Troubleshooting Port Issues:
 ```bash
-# Check what's using port 3000
-lsof -i :3000
+# Check what's using port 8000
+lsof -i :8000
 
 # Kill process on port if needed
-sudo kill -9 $(lsof -t -i:3000)
+sudo kill -9 $(lsof -t -i:8000)
 
 # Start on alternative port
-./claude-flow mcp start --port 3001
+./claude-flow mcp start --port 8001
 
 # Verify server is running
 ./claude-flow mcp status

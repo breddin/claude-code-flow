@@ -217,7 +217,7 @@ export async function startNodeREPL(options: any = {}): Promise<void> {
       aliases: ['conn'],
       description: 'Connect to Claude-Flow orchestrator',
       usage: 'connect [host:port]',
-      examples: ['connect', 'connect localhost:3000'],
+      examples: ['connect', 'connect localhost:8000'],
       handler: async (args, ctx) => {
         await connectToOrchestrator(ctx, args[0]);
       },
@@ -618,7 +618,7 @@ async function showSystemStatus(context: REPLContext, component?: string): Promi
 }
 
 async function connectToOrchestrator(context: REPLContext, target?: string): Promise<void> {
-  const host = target || 'localhost:3000';
+  const host = target || 'localhost:8000';
   
   console.log(chalk.yellow(`Connecting to ${host}...`));
   context.connectionStatus = 'connecting';

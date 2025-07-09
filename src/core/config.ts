@@ -232,7 +232,7 @@ const DEFAULT_CONFIG: Config = {
   },
   mcp: {
     transport: 'stdio',
-    port: 3000,
+    port: 8000,
     tlsEnabled: false,
   },
   logging: {

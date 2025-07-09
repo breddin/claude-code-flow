@@ -12,7 +12,7 @@ export class SettingsManager {
     // Default settings
     this.defaults = {
       // Connection settings
-      serverUrl: 'ws://localhost:3000/ws',
+      serverUrl: 'ws://localhost:8000/ws',
       authToken: '',
       autoConnect: true,
       

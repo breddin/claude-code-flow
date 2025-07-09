@@ -47,7 +47,7 @@ The main configuration file is `claude-flow.config.json`, located in your projec
   },
   "mcp": {
     "transport": "stdio",
-    "port": 3000,
+    "port": 8000,
     "tlsEnabled": false,
     "allowedTools": ["*"],
     "maxRequestSize": "10MB",
@@ -270,7 +270,7 @@ Model Context Protocol server settings.
 {
   "mcp": {
     "transport": "stdio",
-    "port": 3000,
+    "port": 8000,
     "host": "localhost",
     "tlsEnabled": false,
     "allowedTools": ["*"],

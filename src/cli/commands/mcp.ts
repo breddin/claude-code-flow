@@ -162,7 +162,7 @@ export const mcpCommand = new Command()
       
       // Mock logs since logging system might not be fully implemented
       const logEntries = [
-        '2024-01-10 10:00:00 [INFO] MCP server started on localhost:3000',
+        '2024-01-10 10:00:00 [INFO] MCP server started on localhost:8000',
         '2024-01-10 10:00:01 [INFO] Tools registered: 12',
         '2024-01-10 10:00:02 [INFO] Authentication disabled',
         '2024-01-10 10:01:00 [INFO] Client connected: claude-desktop',

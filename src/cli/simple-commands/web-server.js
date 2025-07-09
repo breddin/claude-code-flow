@@ -15,7 +15,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export class ClaudeCodeWebServer {
-  constructor(port = 3000) {
+  constructor(port = 8000) {
     this.port = port;
     this.server = null;
     this.wss = null;
@@ -896,7 +896,7 @@ export class ClaudeCodeWebServer {
 /**
  * Start web server command
  */
-export async function startWebServer(port = 3000) {
+export async function startWebServer(port = 8000) {
   const server = new ClaudeCodeWebServer(port);
   
   try {
@@ -923,6 +923,6 @@ export async function startWebServer(port = 3000) {
 
 // Auto-run if called directly
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const port = process.argv[2] ? parseInt(process.argv[2]) : 3000;
+  const port = process.argv[2] ? parseInt(process.argv[2]) : 8000;
   await startWebServer(port);
 }

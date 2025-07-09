@@ -65,7 +65,7 @@ src/ui/console/
 
 2. Open web browser and navigate to:
    ```
-   http://localhost:3000/console
+   http://localhost:8000/console
    ```
 
 3. The console will automatically attempt to connect to the WebSocket endpoint

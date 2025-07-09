@@ -63,9 +63,9 @@ Current version: `1.0.0`
 
 ```env
 # Server Configuration
-PORT=3000
+PORT=8000
 NODE_ENV=development
-API_URL=http://localhost:3000
+API_URL=http://localhost:8000
 
 # Database
 MONGODB_URI=mongodb://localhost:27017/rest-api-advanced
@@ -81,7 +81,7 @@ JWT_REFRESH_EXPIRE=30d
 ROTATE_REFRESH_TOKENS=true
 
 # Security
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
+ALLOWED_ORIGINS=http://localhost:8000,http://localhost:8001
 BCRYPT_ROUNDS=10
 
 # Email (for production)

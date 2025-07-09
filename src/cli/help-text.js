@@ -3,7 +3,7 @@
  * Provides clear, actionable command documentation
  */
 
-export const VERSION = '2.0.0';
+export const VERSION = '2.0.0-alpha.37';
 
 export const MAIN_HELP = `
 🌊 Claude-Flow v${VERSION} - Enterprise-Grade AI Agent Orchestration Platform
@@ -70,8 +70,8 @@ USAGE:
   claude-flow init --sparc         # Initialize with SPARC methodology
   claude-flow help hive-mind       # Learn about Hive Mind features
 
-📚 Documentation: https://github.com/ruvnet/claude-code-flow
-🐝 Hive Mind Guide: https://github.com/ruvnet/claude-code-flow/docs/hive-mind
+📚 Documentation: https://github.com/ruvnet/claude-flow
+🐝 Hive Mind Guide: https://github.com/ruvnet/claude-flow/tree/main/docs/hive-mind
 🐝 ruv-swarm: https://github.com/ruvnet/ruv-FANN/tree/main/ruv-swarm
 `;
 

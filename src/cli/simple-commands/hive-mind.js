@@ -13,6 +13,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { args, cwd, exit, writeTextFile, readTextFile, mkdirAsync } from '../node-compat.js';
 import { isInteractive, isRawModeSupported, warnNonInteractive, checkNonInteractiveAuth } from '../utils/interactive-detector.js';
+import { safeInteractive, nonInteractiveProgress, nonInteractiveSelect } from '../utils/safe-interactive.js';
 
 // Import SQLite for persistence
 import Database from 'better-sqlite3';
@@ -89,7 +90,7 @@ ${chalk.bold('OPTIONS:')}
   --no-auto-permissions  Disable automatic --dangerously-skip-permissions
 
 ${chalk.bold('For more information:')}
-${chalk.blue('https://github.com/ruvnet/claude-code-flow/docs/hive-mind.md')}
+${chalk.blue('https://github.com/ruvnet/claude-flow/tree/main/docs/hive-mind')}
 `);
 }
 
@@ -157,6 +158,10 @@ async function initHiveMind(flags) {
         confidence REAL DEFAULT 1.0,
         created_by TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        accessed_at DATETIME,
+        access_count INTEGER DEFAULT 0,
+        compressed INTEGER DEFAULT 0,
+        size INTEGER DEFAULT 0,
         FOREIGN KEY (swarm_id) REFERENCES swarms(id)
       );
       
@@ -218,50 +223,87 @@ async function initHiveMind(flags) {
 /**
  * Interactive wizard for hive mind operations
  */
-async function hiveMindWizard() {
-  console.log(chalk.yellow('\n🧙 Hive Mind Interactive Wizard\n'));
-  
-  const { action } = await inquirer.prompt([
-    {
-      type: 'list',
-      name: 'action',
-      message: 'What would you like to do?',
-      choices: [
-        { name: '🐝 Create new swarm', value: 'spawn' },
-        { name: '📊 View swarm status', value: 'status' },
-        { name: '🧠 Manage collective memory', value: 'memory' },
-        { name: '🤝 View consensus decisions', value: 'consensus' },
-        { name: '📈 Performance metrics', value: 'metrics' },
-        { name: '🔧 Configure hive mind', value: 'config' },
-        { name: '❌ Exit', value: 'exit' }
-      ]
+// Wrapped wizard function that handles non-interactive environments
+const hiveMindWizard = safeInteractive(
+  // Interactive version
+  async function(flags = {}) {
+    console.log(chalk.yellow('\n🧙 Hive Mind Interactive Wizard\n'));
+    
+    const { action } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'action',
+        message: 'What would you like to do?',
+        choices: [
+          { name: '🐝 Create new swarm', value: 'spawn' },
+          { name: '📊 View swarm status', value: 'status' },
+          { name: '🧠 Manage collective memory', value: 'memory' },
+          { name: '🤝 View consensus decisions', value: 'consensus' },
+          { name: '📈 Performance metrics', value: 'metrics' },
+          { name: '🔧 Configure hive mind', value: 'config' },
+          { name: '❌ Exit', value: 'exit' }
+        ]
+      }
+    ]);
+    
+    switch (action) {
+      case 'spawn':
+        await spawnSwarmWizard();
+        break;
+      case 'status':
+        await showStatus({});
+        break;
+      case 'memory':
+        await manageMemoryWizard();
+        break;
+      case 'consensus':
+        await showConsensus({});
+        break;
+      case 'metrics':
+        await showMetrics({});
+        break;
+      case 'config':
+        await configureWizard();
+        break;
+      case 'exit':
+        console.log(chalk.gray('Exiting wizard...'));
+        break;
     }
-  ]);
-  
-  switch (action) {
-    case 'spawn':
-      await spawnSwarmWizard();
-      break;
-    case 'status':
-      await showStatus({});
-      break;
-    case 'memory':
-      await manageMemoryWizard();
-      break;
-    case 'consensus':
-      await showConsensus({});
-      break;
-    case 'metrics':
-      await showMetrics({});
-      break;
-    case 'config':
-      await configureWizard();
-      break;
-    case 'exit':
-      console.log(chalk.gray('Exiting wizard...'));
-      break;
+  },
+  // Non-interactive fallback
+  async function(flags = {}) {
+    console.log(chalk.yellow('\n🧙 Hive Mind - Non-Interactive Mode\n'));
+    
+    // Default to creating a swarm with sensible defaults
+    console.log(chalk.cyan('Creating new swarm with default settings...'));
+    console.log(chalk.gray('Use command-line flags to customize:'));
+    console.log(chalk.gray('  --objective "Your task"    Set swarm objective'));
+    console.log(chalk.gray('  --queen-type strategic     Set queen type'));
+    console.log(chalk.gray('  --max-workers 8            Set worker count'));
+    console.log();
+    
+    const objective = flags.objective || 'General task coordination';
+    const config = {
+      name: flags.name || `swarm-${Date.now()}`,
+      queenType: flags.queenType || flags['queen-type'] || 'strategic',
+      maxWorkers: parseInt(flags.maxWorkers || flags['max-workers'] || '8'),
+      consensusAlgorithm: flags.consensus || 'majority',
+      autoScale: flags.autoScale || flags['auto-scale'] || false,
+      encryption: flags.encryption || false
+    };
+    
+    await spawnSwarm([objective], {
+      ...flags,
+      name: config.name,
+      queenType: config.queenType,
+      maxWorkers: config.maxWorkers,
+      consensusAlgorithm: config.consensusAlgorithm,
+      autoScale: config.autoScale,
+      encryption: config.encryption,
+      nonInteractive: true
+    });
   }
-}
+);
 
 /**
  * Spawn swarm wizard
@@ -427,7 +469,8 @@ async function spawnSwarm(args, flags) {
         objective TEXT,
         queen_type TEXT,
         status TEXT DEFAULT 'active',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME
       );
       
       CREATE TABLE IF NOT EXISTS agents (
@@ -448,8 +491,10 @@ async function spawnSwarm(args, flags) {
         agent_id TEXT,
         description TEXT,
         status TEXT DEFAULT 'pending',
+        priority INTEGER DEFAULT 5,
         result TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        completed_at DATETIME,
         FOREIGN KEY (swarm_id) REFERENCES swarms(id),
         FOREIGN KEY (agent_id) REFERENCES agents(id)
       );
@@ -871,23 +916,52 @@ async function showMetrics(flags) {
       });
     }
     
-    // Get agent performance
-    const agentPerf = db.prepare(`
-      SELECT 
-        a.name,
-        a.type,
-        COUNT(t.id) as tasks_assigned,
-        SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as tasks_completed,
-        AVG(CASE WHEN t.completed_at IS NOT NULL 
-          THEN (julianday(t.completed_at) - julianday(t.created_at)) * 24 * 60 
-          ELSE NULL END) as avg_completion_minutes
-      FROM agents a
-      LEFT JOIN tasks t ON a.id = t.agent_id
-      GROUP BY a.id
-      HAVING tasks_assigned > 0
-      ORDER BY tasks_completed DESC
-      LIMIT 10
-    `).all();
+    // Get agent performance (check for completed_at column)
+    let agentPerf = [];
+    try {
+      // Check if completed_at exists
+      const hasCompletedAt = db.prepare(`
+        SELECT COUNT(*) as count FROM pragma_table_info('tasks') 
+        WHERE name = 'completed_at'
+      `).get();
+      
+      if (hasCompletedAt && hasCompletedAt.count > 0) {
+        agentPerf = db.prepare(`
+          SELECT 
+            a.name,
+            a.type,
+            COUNT(t.id) as tasks_assigned,
+            SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as tasks_completed,
+            AVG(CASE WHEN t.completed_at IS NOT NULL 
+              THEN (julianday(t.completed_at) - julianday(t.created_at)) * 24 * 60 
+              ELSE NULL END) as avg_completion_minutes
+          FROM agents a
+          LEFT JOIN tasks t ON a.id = t.agent_id
+          GROUP BY a.id
+          HAVING tasks_assigned > 0
+          ORDER BY tasks_completed DESC
+          LIMIT 10
+        `).all();
+      } else {
+        // Simpler query without completed_at
+        agentPerf = db.prepare(`
+          SELECT 
+            a.name,
+            a.type,
+            COUNT(t.id) as tasks_assigned,
+            SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as tasks_completed,
+            NULL as avg_completion_minutes
+          FROM agents a
+          LEFT JOIN tasks t ON a.id = t.agent_id
+          GROUP BY a.id
+          HAVING tasks_assigned > 0
+          ORDER BY tasks_completed DESC
+          LIMIT 10
+        `).all();
+      }
+    } catch (error) {
+      console.warn('Could not get agent performance:', error.message);
+    }
     
     if (agentPerf.length > 0) {
       console.log('\n' + chalk.cyan('Top Performing Agents:'));
@@ -933,29 +1007,70 @@ async function showMetrics(flags) {
     }
     
     // Get performance insights
-    const avgTaskTime = db.prepare(`
-      SELECT 
-        AVG(CASE WHEN completed_at IS NOT NULL 
-          THEN (julianday(completed_at) - julianday(created_at)) * 24 * 60 
-          ELSE NULL END) as avg_minutes
-      FROM tasks
-      WHERE status = 'completed'
-    `).get();
+    let avgTaskTime = { avg_minutes: null };
+    try {
+      // Check if completed_at exists
+      const hasCompletedAt = db.prepare(`
+        SELECT COUNT(*) as count FROM pragma_table_info('tasks') 
+        WHERE name = 'completed_at'
+      `).get();
+      
+      if (hasCompletedAt && hasCompletedAt.count > 0) {
+        avgTaskTime = db.prepare(`
+          SELECT 
+            AVG(CASE WHEN completed_at IS NOT NULL 
+              THEN (julianday(completed_at) - julianday(created_at)) * 24 * 60 
+              ELSE NULL END) as avg_minutes
+          FROM tasks
+          WHERE status = 'completed'
+        `).get();
+      }
+    } catch (error) {
+      console.warn('Could not calculate average task time:', error.message);
+    }
     
-    const agentTypePerf = db.prepare(`
-      SELECT 
-        a.type,
-        COUNT(t.id) as total_tasks,
-        SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
-        AVG(CASE WHEN t.completed_at IS NOT NULL 
-          THEN (julianday(t.completed_at) - julianday(t.created_at)) * 24 * 60 
-          ELSE NULL END) as avg_completion_minutes
-      FROM agents a
-      LEFT JOIN tasks t ON a.id = t.agent_id
-      GROUP BY a.type
-      HAVING total_tasks > 0
-      ORDER BY completed_tasks DESC
-    `).all();
+    // Get agent type performance
+    let agentTypePerf = [];
+    try {
+      // Check if completed_at exists
+      const hasCompletedAt = db.prepare(`
+        SELECT COUNT(*) as count FROM pragma_table_info('tasks') 
+        WHERE name = 'completed_at'
+      `).get();
+      
+      if (hasCompletedAt && hasCompletedAt.count > 0) {
+        agentTypePerf = db.prepare(`
+          SELECT 
+            a.type,
+            COUNT(t.id) as total_tasks,
+            SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
+            AVG(CASE WHEN t.completed_at IS NOT NULL 
+              THEN (julianday(t.completed_at) - julianday(t.created_at)) * 24 * 60 
+              ELSE NULL END) as avg_completion_minutes
+          FROM agents a
+          LEFT JOIN tasks t ON a.id = t.agent_id
+          GROUP BY a.type
+          HAVING total_tasks > 0
+          ORDER BY completed_tasks DESC
+        `).all();
+      } else {
+        // Simpler query without completed_at
+        agentTypePerf = db.prepare(`
+          SELECT 
+            a.type,
+            COUNT(t.id) as total_tasks,
+            SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
+            NULL as avg_completion_minutes
+          FROM agents a
+          LEFT JOIN tasks t ON a.id = t.agent_id
+          GROUP BY a.type
+          HAVING total_tasks > 0
+          ORDER BY completed_tasks DESC
+        `).all();
+      }
+    } catch (error) {
+      console.warn('Could not get agent type performance:', error.message);
+    }
     
     if (avgTaskTime.avg_minutes) {
       console.log('\n' + chalk.cyan('Performance Insights:'));
@@ -1102,7 +1217,7 @@ export async function hiveMindCommand(args, flags) {
       break;
       
     case 'wizard':
-      await hiveMindWizard();
+      await hiveMindWizard(flags);
       break;
       
     case 'help':
@@ -1487,7 +1602,7 @@ async function spawnClaudeCodeInstances(swarmId, swarmName, objective, workers, 
         claudeAvailable = true;
       } catch {
         console.log(chalk.yellow('\n⚠️  Claude Code CLI not found in PATH'));
-        console.log(chalk.gray('Install it with: npm install -g @anthropic/claude-code-cli'));
+        console.log(chalk.gray('Install it with: npm install -g @anthropic-ai/claude-code'));
         console.log(chalk.gray('\nFalling back to displaying instructions...'));
       }
       
@@ -1531,7 +1646,7 @@ async function spawnClaudeCodeInstances(swarmId, swarmName, objective, workers, 
         console.log(chalk.yellow('\n📋 Manual Execution Instructions:'));
         console.log(chalk.gray('─'.repeat(50)));
         console.log(chalk.gray('1. Install Claude Code:'));
-        console.log(chalk.green('   npm install -g @anthropic/claude-code-cli'));
+        console.log(chalk.green('   npm install -g @anthropic-ai/claude-code'));
         console.log(chalk.gray('\n2. Run with the saved prompt:'));
         console.log(chalk.green(`   claude < ${promptFile}`));
         console.log(chalk.gray('\n3. Or copy the prompt manually:'));

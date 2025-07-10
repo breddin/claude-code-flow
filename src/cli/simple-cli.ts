@@ -180,6 +180,7 @@ async function main() {
 
   const command = args[0];
   const { flags, args: parsedArgs } = parseFlags(args.slice(1));
+  const typedFlags: Record<string, any> = flags;
 
   // Handle special commands first
   switch (command) {
@@ -203,7 +204,7 @@ async function main() {
   // Check if this is a registered modular command
   if (hasCommand(command)) {
     try {
-      await executeCommand(command, parsedArgs, flags);
+      await executeCommand(command, parsedArgs, typedFlags);
       return;
     } catch (err: unknown) {
       printError((err as Error).message);
@@ -234,7 +235,7 @@ async function main() {
     case 'spawn':
       // Convenience alias for agent spawn
       const spawnType = subArgs[0] || 'general';
-      const spawnName = flags.name || `agent-${Date.now()}`;
+      const spawnName = typedFlags.name || `agent-${Date.now()}`;
       
       printSuccess(`Spawning ${spawnType} agent: ${spawnName}`);
       console.log('🤖 Agent would be created with the following configuration:');
@@ -1193,7 +1194,7 @@ async function main() {
           }
           
           // Parse flags
-          const flags = {};
+          const flags: Record<string, any> = {};
           for (let i = taskEndIndex; i < subArgs.length; i++) {
             const arg = subArgs[i];
             if (arg === '--tools' || arg === '-t') {
@@ -2035,14 +2036,14 @@ async function startRepl() {
   console.log('Type "help" for available commands, "exit" to quit\n');
   
   const replState = {
-    history: [],
+    history: [] as string[],
     historyIndex: -1,
-    currentSession: null,
+    currentSession: null as string | null,
     context: {
-      agents: [],
-      tasks: [],
-      terminals: [],
-      memory: {}
+      agents: [] as any[],
+      tasks: [] as any[],
+      terminals: [] as any[],
+      memory: {} as Record<string, any>
     }
   };
   
@@ -2112,7 +2113,7 @@ Shortcuts:
     
     config: async (key: string) => {
       try {
-        const config = JSON.parse(await fs.readFile('claude-flow.config.json'));
+        const config = JSON.parse(await fs.readFile('claude-flow.config.json', 'utf8'));
         if (key) {
           const keys = key.split('.');
           let value = config;
@@ -2185,8 +2186,8 @@ Shortcuts:
     const args = parts.slice(1);
     
     // Handle built-in REPL commands
-    if (replCommands[command]) {
-      await replCommands[command](...args);
+    if (command in replCommands) {
+      await (replCommands as any)[command](...args);
       return true;
     }
     
@@ -3229,6 +3230,7 @@ For more information about SPARC methodology, see: https://github.com/ruvnet/cla
 `;
 }
 
-if (import.meta.main) {
+// Node.js doesn't have import.meta.main, check if this is the main module
+if (import.meta.url === `file://${process.argv[1]}`) {
   await main();
 }

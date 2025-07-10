@@ -16,6 +16,37 @@ export interface IAuthManager {
   revokeToken(token: string): Promise<void>;
 }
 
+export interface AuthContext {
+  sessionId?: string;
+  user?: string;
+  permissions?: string[];
+  authenticated?: boolean;
+}
+
+export interface TokenInfo {
+  token: string;
+  user: string;
+  permissions: string[];
+  createdAt: Date;
+  expiresAt: Date;
+}
+
+export interface TokenGenerationOptions {
+  expiresIn?: number; // seconds
+  permissions?: string[];
+  scopes?: string[];
+}
+
+export interface AuthSession {
+  id: string;
+  user: string;
+  permissions: string[];
+  authenticated: boolean;
+  createdAt: Date;
+  lastActiveAt: Date;
+  expiresAt?: Date;
+}
+
 export interface AuthResult {
   success: boolean;
   user?: string;

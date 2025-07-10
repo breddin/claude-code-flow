@@ -386,7 +386,9 @@ export async function startNodeREPL(options: any = {}): Promise<void> {
   completer.setCommands(commands);
   
   // Set completer function
-  // rl.completer = (line: string) => {
+  // Note: readline.Interface doesn't have a direct completer property in newer versions
+  // Using a workaround approach
+  (rl as any).completer = (line: string) => {
     return completer.complete(line);
   };
   
